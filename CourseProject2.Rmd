@@ -1,0 +1,208 @@
+---
+title: "Reproducable Research, Project 2"
+author: "Andrew Witherspoon"
+date: "10/14/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Data Processing
+
+First we will download the data it into our *./data/* directory, and load it as an R object
+```{r, cache=TRUE}
+if(!file.exists("./data/")){
+        dir.create("./data/")
+}
+
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+
+if(!file.exists("./data/StormData.csv.bz2")){
+        download.file(url, "./data/StormData.csv.bz2")
+        
+        downloadDate <- Sys.time()
+}
+
+if(!exists("stormData")){
+        stormData <- read.csv("./data/StormData.csv.bz2")
+}
+```
+Clean up EVTYPE variable
+```{r}
+library(dplyr)
+
+stormData <- stormData %>%
+        mutate(EVTYPE = tolower(EVTYPE))
+
+stormData$event <- NA
+
+stormData$event[grepl("aval", stormData$EVTYPE)] <- "avalanche"
+stormData$event[grepl("tornad", stormData$EVTYPE)] <- "tornado"
+stormData$event[grepl("floo|surf|tide|dam|swell", stormData$EVTYPE)] <- "flood"
+stormData$event[grepl("thun|lightn", stormData$EVTYPE)] <- "thunderstorm"
+stormData$event[grepl("rain|shower", stormData$EVTYPE)] <- "rain"
+stormData$event[grepl("cold|freez|chil|frost", stormData$EVTYPE)] <- "cold"
+stormData$event[grepl("blizz|snow|ice|winter", stormData$EVTYPE)] <- "snow"
+stormData$event[grepl("fire|smoke", stormData$EVTYPE)] <- "fire"
+stormData$event[grepl("dry|drought|driest|dust", stormData$EVTYPE)] <- "dry"
+stormData$event[grepl("wind", stormData$EVTYPE)] <- "wind"
+stormData$event[grepl("hail", stormData$EVTYPE)] <- "hail"
+stormData$event[grepl("hurrican", stormData$EVTYPE)] <- "hurricane"
+stormData$event[grepl("hot|high temp", stormData$EVTYPE)] <- "hot"
+stormData$event[grepl("mud", stormData$EVTYPE)] <- "mudslide"
+stormData$event[grepl("tropical|tstm", stormData$EVTYPE)] <- "tropical storm"
+stormData$event[grepl("typhoon", stormData$EVTYPE)] <- "typhoon"
+stormData$event[grepl("tsunami", stormData$EVTYPE)] <- "tsunami"
+stormData$event[grepl("volc", stormData$EVTYPE)] <- "volcano"
+stormData$event[grepl("water spout", stormData$EVTYPE)] <- "water spout"
+
+percentNA <- mean(is.na(stormData$event))
+```
+This accounts for `r (1-percentNA)*100`% of obersvations, which is sufficient.
+
+```{r}
+library(reshape2)
+
+
+Fatalties <- 
+        with(stormData,
+             aggregate(FATALITIES ~ event, FUN = sum))
+
+Injuries <-
+        with(stormData,
+             aggregate(INJURIES ~ event, FUN = sum))
+
+harmfulEvents <-
+        merge(Fatalties, Injuries) %>%
+        arrange(desc(FATALITIES+INJURIES)) %>%
+        head(5) %>%
+        melt(, id.vars = "event", variable.name = "harm", value.name = "count")
+
+library(knitr)
+
+kable((harmfulEvents))
+```
+
+```{r}
+library(ggplot2)
+
+p1 <- ggplot(harmfulEvents, aes(reorder(event, -count, sum), count)) +
+        geom_bar(stat = "identity", aes(fill = harm)) +
+        xlab("") + ylab("") +
+        scale_fill_manual(values = c("#5c99ce", "#9ccbf4")) +
+        theme(panel.background = element_blank(), legend.position = c(.85,.90),
+              legend.box.background = element_rect(colour = "black"),
+              legend.title = element_blank(), legend.key.width = unit(2,"cm"),
+              plot.title = element_text(hjust = .5)) +
+        labs(title = "Human harm (injuries and fatalties), in the U.S., 
+             top five most harmful event types")
+p1
+```
+
+```{r, warning=FALSE}
+stateEvents <- stormData %>%
+        mutate(totalharm = FATALITIES + INJURIES)
+
+stateEvents <- aggregate(totalharm ~ STATE + event, data=stateEvents, FUN = sum) %>%
+        group_by(STATE) %>%
+        filter(totalharm == max(totalharm)) %>%
+        filter(STATE %in% state.abb) %>%
+        mutate(event = factor(event))
+
+stateEvents$STATE <- tolower(state.name[match(stateEvents$STATE,state.abb)])
+
+kable(head(stateEvents))
+```
+
+
+```{r, warning=FALSE}
+library(maps)
+states_map <- map_data("state")
+
+p2 <- ggplot() +
+        geom_map(data = states_map, map = states_map,
+                 aes(x = long, y = lat, map_id = region),
+                 fill="#ffffff", color="black", size=0.15) +
+        geom_map(data = stateEvents, map = states_map,
+                 aes(fill = event, map_id = STATE),
+                 color = "black", size = 0.15) +
+        coord_map("polyconic") +
+        labs(fill = "Event Type", title = "Leading cause of human harm \n(injuries + fatalaties), by state") +
+        theme(panel.background = element_blank(),
+              panel.grid = element_blank(),
+              axis.title = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank(),
+              plot.title = element_text(hjust = 0.5))
+p2
+```
+Exponential level for CROPDMGEXP variable and PROPDMGEXP
+```{r}
+summary(stormData$PROPDMGEXP)
+summary(stormData$CROPDMGEXP)
+```
+
+Based on analysis found here: https://rpubs.com/flyingdisc/PROPDMGEXP
+```{r}
+stormData$cropMltpr <- NA
+stormData$propMltpr <- NA
+
+stormData$propMltpr[grepl("-", stormData$PROPDMGEXP)] <- 0
+stormData$propMltpr[grepl("?|+", stormData$PROPDMGEXP)] <- 1
+stormData$propMltpr[grepl("0|2|3|4|5|6|7|8", stormData$PROPDMGEXP)] <- 10
+stormData$propMltpr[grepl("h|H", stormData$PROPDMGEXP)] <- 100
+stormData$propMltpr[grepl("k|K", stormData$PROPDMGEXP)] <- 1000
+stormData$propMltpr[grepl("m|M", stormData$PROPDMGEXP)] <- 1000000
+stormData$propMltpr[grepl("b|B", stormData$PROPDMGEXP)] <- 1000000000
+
+stormData$cropMltpr[grepl("?", stormData$CROPDMGEXP)] <- 1
+stormData$cropMltpr[grepl("0|2", stormData$CROPDMGEXP)] <- 10
+stormData$cropMltpr[grepl("h|H", stormData$CROPDMGEXP)] <- 100
+stormData$cropMltpr[grepl("k|K", stormData$CROPDMGEXP)] <- 1000
+stormData$cropMltpr[grepl("m|M", stormData$CROPDMGEXP)] <- 1000000
+stormData$cropMltpr[grepl("b|B", stormData$CROPDMGEXP)] <- 1000000000
+
+stormData$mPropDmg <- stormData$PROPDMG * stormData$propMltpr
+stormData$mCropDmg <- stormData$CROPDMG * stormData$cropMltpr
+```
+
+```{r}
+propDmgTot <- 
+        with(stormData,
+             aggregate(mPropDmg ~ event, FUN = sum))
+
+cropDmgTot <- 
+        with(stormData,
+             aggregate(mCropDmg ~ event, FUN = sum))
+
+costlyEvents <-
+        merge(propDmgTot, cropDmgTot) %>%
+        mutate(totalsum = mCropDmg + mPropDmg) %>%
+        arrange(desc(totalsum)) %>%
+        select(event, mCropDmg, mPropDmg) %>%
+        head(5) %>%
+        melt(, id.vars = "event", variable.name = "damageType", value.name = "Expense")
+
+library(knitr)
+
+kable((costlyEvents))
+```
+
+```{r}
+p3 <- ggplot(costlyEvents, aes(reorder(event, -Expense, sum), Expense)) +
+        geom_bar(stat = "identity", aes(fill = damageType)) +
+        xlab("") + ylab("") +
+        scale_fill_manual(values = c("#9ccbf4", "#5c99ce"), 
+                          labels = c("Crop Damage", "Property Damage")) +
+        theme(panel.background = element_blank(), legend.position = c(.85,.90),
+              legend.box.background = element_rect(colour = "black"),
+              legend.title = element_blank(), legend.key.width = unit(2,"cm"),
+              plot.title = element_text(hjust = .5)) +
+        labs(title = "Expense (property damage and crop damage), in the U.S,
+             top five costliest event types") +
+        scale_y_continuous(breaks = c(50000000000, 100000000000, 150000000000),
+                           labels = c("$50 billion", "$100 billion", "$150 billion"))
+p3
+```
