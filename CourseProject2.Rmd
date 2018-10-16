@@ -1,18 +1,32 @@
 ---
-title: "Reproducable Research, Project 2"
+title: "Analysis of Severe Weather Events in the U.S."
 author: "Andrew Witherspoon"
-date: "10/14/2018"
+date: 10/15/2018
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 ```
+
+##Synopsis
+
+In order to prepare for severe weather events and prioritize resources, an analysis was done on the National Weather Service Storm Data, an official publication of the National Oceanic
+and Atmospheric Administration (NOAA).  Specifically, this analysis will look to identify weather events that have caused the most human harm (injuries and fatalities), and those that have had the biggest economic impact (property damage and crop damage).
+
+The data is collected over a period of time beginning in 1950 through most of 2011.  There are fewer events recorded at earlier dates (presumably due to a lack of good records), but for this initial analysis we will include data from the entirety of date ranges.
+
+The data used for this analysis can be downloaded here: [Storm Data] [1]
+
+A description of the data can be found here: [Storm Data Documentation] [2]
+
+A more concise summary of the data can be found here: [Storm Data FAQ] [3]
+
 
 ##Data Processing
 
-First we will download the data it into our *./data/* directory, and load it as an R object
-```{r, cache=TRUE}
+The Storm Data linked above will be downloaded into the *./data/* directory, and loaded as an R object.  We will also take a quick look at the variable names in the data set.
+```{r dowload}
 if(!file.exists("./data/")){
         dir.create("./data/")
 }
@@ -29,8 +43,11 @@ if(!exists("stormData")){
         stormData <- read.csv("./data/StormData.csv.bz2")
 }
 ```
-Clean up EVTYPE variable
-```{r}
+The data was downloaded at: `r downloadDate`
+\n
+
+The **EVTYPE** variable is of particular interest, but it is very inconsistent in terms of labeling weather events.  It is a factor variable with `r nlevels(stormData$EVTYPE)` levels.  In this preliminary analysis, we will attempt to group these into 19 event types, to make analysis more meaningful.
+```{r data1}
 library(dplyr)
 
 stormData <- stormData %>%
@@ -60,9 +77,13 @@ stormData$event[grepl("water spout", stormData$EVTYPE)] <- "water spout"
 
 percentNA <- mean(is.na(stormData$event))
 ```
-This accounts for `r (1-percentNA)*100`% of obersvations, which is sufficient.
+A more robust analysis may require a more detailed renaming of event types; however, the above factor renaming accounts for `r round((1-percentNA)*100,2)`% of observations, which will be sufficient for this initial analysis.
+\n
 
-```{r}
+##Which Weather Events Cause the Most Human Harm?
+
+Now that we have made the event type data more usable for analysis, we will aggregate the fatalities and injuries totals, by event type, and isolate the top five most harmful events (injuries + fatalities).
+```{r harmplot1data}
 library(reshape2)
 
 
@@ -84,8 +105,10 @@ library(knitr)
 
 kable((harmfulEvents))
 ```
+\n
 
-```{r}
+While the table above has the data summarized, we can more easily examine those top five harmful events in a bar plot.
+```{r harmplot1, fig.align="center"}
 library(ggplot2)
 
 p1 <- ggplot(harmfulEvents, aes(reorder(event, -count, sum), count)) +
@@ -100,8 +123,11 @@ p1 <- ggplot(harmfulEvents, aes(reorder(event, -count, sum), count)) +
              top five most harmful event types")
 p1
 ```
+The bar plot shows us that tornadic events have, by an order of magnitude, caused the most human harm.
+\n
 
-```{r, warning=FALSE}
+Of course, although tornadoes are common in much of the U.S., there are geographic areas that don't see much tornadic activity at all.  In an effort to have more geographic focused preparedness, we will look at the most harmful event for each state.
+```{r mapPlotdata, warning=FALSE}
 stateEvents <- stormData %>%
         mutate(totalharm = FATALITIES + INJURIES)
 
@@ -115,9 +141,9 @@ stateEvents$STATE <- tolower(state.name[match(stateEvents$STATE,state.abb)])
 
 kable(head(stateEvents))
 ```
+\n
 
-
-```{r, warning=FALSE}
+```{r mapPlot, warning=FALSE, fig.align="center"}
 library(maps)
 states_map <- map_data("state")
 
@@ -138,14 +164,33 @@ p2 <- ggplot() +
               plot.title = element_text(hjust = 0.5))
 p2
 ```
-Exponential level for CROPDMGEXP variable and PROPDMGEXP
-```{r}
+The map above again shows the prevalence of tornadoes causing human harm, but also illustrates that for the coastal areas and Western states, there are other event types that are the leading causes of human harm.
+/n
+
+##Which Weather Events Have the Bigges Economic Impact?
+
+For this analysis, we will be interested in event types as they relate to property damage (**PROPDMG** and **PROPDMGEXP** variables) and crop damage (**CROPDMG** and **CROPDMGEXP** variables).
+
+The **PROPDMGEXP** and **CROPDMGEXP** variables, on initial glance, don't seem to make much sense.
+```{r econdata1}
 summary(stormData$PROPDMGEXP)
 summary(stormData$CROPDMGEXP)
 ```
 
-Based on analysis found here: https://rpubs.com/flyingdisc/PROPDMGEXP
-```{r}
+Based on analysis found here: [https://rpubs.com/flyingdisc/PROPDMGEXP][4], it appears that these entries are multipliers for the **PROPDMG** and **CROPDMG** variables:
+
+| Symbol | Multiplier     |
+| ------ | ------------- |
+| -      | 0             |
+| ?, +   | 1             |
+| 0 - 8  | 10            |
+| h, H   | 100           |
+| k, K   | 1,000         |
+| m, M   | 1,000,000     |
+| b, B   | 1,000,000,000 |
+
+
+```{r econdata2}
 stormData$cropMltpr <- NA
 stormData$propMltpr <- NA
 
@@ -167,8 +212,10 @@ stormData$cropMltpr[grepl("b|B", stormData$CROPDMGEXP)] <- 1000000000
 stormData$mPropDmg <- stormData$PROPDMG * stormData$propMltpr
 stormData$mCropDmg <- stormData$CROPDMG * stormData$cropMltpr
 ```
+\n
 
-```{r}
+Just as we did with injuries and fatalities for harmful events, we will aggregate the property damage and crop damage totals, by event type, and isolate the top five costliest events (property damage + crop damage).
+```{r econdata3}
 propDmgTot <- 
         with(stormData,
              aggregate(mPropDmg ~ event, FUN = sum))
@@ -190,7 +237,7 @@ library(knitr)
 kable((costlyEvents))
 ```
 
-```{r}
+```{r econplot, fig.align="center"}
 p3 <- ggplot(costlyEvents, aes(reorder(event, -Expense, sum), Expense)) +
         geom_bar(stat = "identity", aes(fill = damageType)) +
         xlab("") + ylab("") +
@@ -206,3 +253,10 @@ p3 <- ggplot(costlyEvents, aes(reorder(event, -Expense, sum), Expense)) +
                            labels = c("$50 billion", "$100 billion", "$150 billion"))
 p3
 ```
+Interestingly, tornadic events, despite the overwhelming level of human harm they do, are only the third costliest event type.  Flood events account for three times the economic impact, and are, by far, the costliest event type.
+
+
+[1]: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+[2]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+[3]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf
+[4]: https://rpubs.com/flyingdisc/PROPDMGEXP
