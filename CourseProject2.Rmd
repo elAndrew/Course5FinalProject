@@ -6,10 +6,10 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = TRUE)
 ```
 
-##Synopsis
+#Synopsis
 
 In order to prepare for severe weather events and prioritize resources, an analysis was done on the National Weather Service Storm Data, an official publication of the National Oceanic
 and Atmospheric Administration (NOAA).  Specifically, this analysis will look to identify weather events that have caused the most human harm (injuries and fatalities), and those that have had the biggest economic impact (property damage and crop damage).
@@ -23,7 +23,7 @@ A description of the data can be found here: [Storm Data Documentation] [2]
 A more concise summary of the data can be found here: [Storm Data FAQ] [3]
 
 
-##Data Processing
+#Data Processing
 
 The Storm Data linked above will be downloaded into the *./data/* directory, and loaded as an R object.  We will also take a quick look at the variable names in the data set.
 ```{r dowload}
@@ -43,7 +43,6 @@ if(!exists("stormData")){
         stormData <- read.csv("./data/StormData.csv.bz2")
 }
 ```
-The data was downloaded at: `r downloadDate`
 \n
 
 The **EVTYPE** variable is of particular interest, but it is very inconsistent in terms of labeling weather events.  It is a factor variable with `r nlevels(stormData$EVTYPE)` levels.  In this preliminary analysis, we will attempt to group these into 19 event types, to make analysis more meaningful.
@@ -79,6 +78,8 @@ percentNA <- mean(is.na(stormData$event))
 ```
 A more robust analysis may require a more detailed renaming of event types; however, the above factor renaming accounts for `r round((1-percentNA)*100,2)`% of observations, which will be sufficient for this initial analysis.
 \n
+
+#Results
 
 ##Which Weather Events Cause the Most Human Harm?
 
@@ -165,7 +166,7 @@ p2 <- ggplot() +
 p2
 ```
 The map above again shows the prevalence of tornadoes causing human harm, but also illustrates that for the coastal areas and Western states, there are other event types that are the leading causes of human harm.
-/n
+\n
 
 ##Which Weather Events Have the Bigges Economic Impact?
 
